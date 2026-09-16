@@ -10,8 +10,17 @@ if (!logFile || !fs.existsSync(logFile)) {
   process.exit(1);
 }
 
-const content = fs.readFileSync(logFile, 'utf8');
-const lines = content.split('\n');
+const rawContent = fs.readFileSync(logFile);
+let content = '';
+
+if (rawContent[0] === 0xff && rawContent[1] === 0xfe) {
+  content = rawContent.toString('utf16le');
+} else {
+  content = rawContent.toString('utf8');
+}
+content = content.replace(/\0/g, ''); // Limpiar residuos de codificación
+
+const lines = content.split(/\r?\n/);
 const metrics: any[] = [];
 
 for (const line of lines) {

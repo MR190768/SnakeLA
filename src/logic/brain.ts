@@ -49,9 +49,21 @@ export const move = (gameState: GameState): MoveResponse => {
     // Feature: Free space
     score += freeSpace * config.WEIGHT_FREE_SPACE;
     
-    // Feature: Center control
+    // Feature: Center control & Edge Avoidance (Evitar morir TRAPPED)
     const centerDist = Math.abs(targetCoord.x - width / 2) + Math.abs(targetCoord.y - height / 2);
     score -= centerDist * config.WEIGHT_CENTER_CONTROL;
+    
+    const isEdge = targetCoord.x === 0 || targetCoord.x === width - 1 || targetCoord.y === 0 || targetCoord.y === height - 1;
+    if (isEdge && state !== 'SEARCH_FOOD') {
+      score -= config.WEIGHT_EDGE_AVOIDANCE;
+    }
+
+    // Feature: Tail Chasing (Movimiento 100% seguro)
+    const myTail = gameState.you.body[gameState.you.body.length - 1];
+    const distToTail = Math.abs(targetCoord.x - myTail.x) + Math.abs(targetCoord.y - myTail.y);
+    if (distToTail === 1 && gameState.you.health < 100) {
+      score += config.WEIGHT_TAIL_CHASE; 
+    }
     
     // Feature: Food
     if (state === 'SEARCH_FOOD' || state === 'DUEL_1V1') {

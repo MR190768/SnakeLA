@@ -27,12 +27,16 @@ console.log("\n--- Starting Calibration ---");
 // Example optimization logic
 const newWeights = {
   WEIGHT_FREE_SPACE: 10.0,
-  WEIGHT_HEAD_AVOIDANCE: -20.0
+  WEIGHT_HEAD_AVOIDANCE: -20.0,
+  WEIGHT_EDGE_AVOIDANCE: 15.0,
+  WEIGHT_TAIL_CHASE: 20.0
 };
 
 if (reasons['TRAPPED'] > (losses.length * 0.3)) {
-  console.log("High trapping rate detected. Increasing WEIGHT_FREE_SPACE.");
-  newWeights.WEIGHT_FREE_SPACE = 15.0;
+  console.log("High trapping rate detected. Increasing edge avoidance and free space weight.");
+  newWeights.WEIGHT_FREE_SPACE = 20.0;
+  newWeights.WEIGHT_EDGE_AVOIDANCE = 30.0;
+  newWeights.WEIGHT_TAIL_CHASE = 35.0;
 }
 
 if (reasons['HEAD_TO_HEAD_LOST'] > (losses.length * 0.2)) {
