@@ -1,11 +1,13 @@
 import { FastifyInstance, FastifyPluginOptions, FastifyRequest, FastifyReply } from 'fastify';
 import { GameState, InfoResponse } from './types/battlesnake';
 import { move, activeGames } from './logic/brain';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export default async function (fastify: FastifyInstance, options: FastifyPluginOptions) {
   
   fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
-    const info: InfoResponse = { apiversion: '1', author: 'staff-engineer', color: '#FF0000', head: 'evil', tail: 'hook', version: '2.0.0' };
+    const info: InfoResponse = { apiversion: '1', author: 'gerson', color: '#FF0000', head: 'evil', tail: 'nr-booster', version: '2.0.0' };
     return info;
   });
 
@@ -40,7 +42,7 @@ export default async function (fastify: FastifyInstance, options: FastifyPluginO
       }
     }
 
-    console.log(JSON.stringify({
+    const gameData = {
       tag: "BATTLESNAKE_GAME_METRIC",
       gameId: game.id,
       won,
@@ -48,7 +50,22 @@ export default async function (fastify: FastifyInstance, options: FastifyPluginO
       finalLength: you.length,
       deathReason,
       history: activeGames[game.id] || []
-    }));
+    };
+
+    console.log(JSON.stringify(gameData));
+
+    try {
+      const dataDir = path.join(__dirname, '..', 'data');
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+      fs.appendFileSync(
+        path.join(dataDir, 'telemetry_logs.jsonl'),
+        JSON.stringify(gameData) + '\n'
+      );
+    } catch (err) {
+      request.log.error('Failed to write telemetry data', err);
+    }
 
     delete activeGames[game.id];
     return reply.status(200).send();

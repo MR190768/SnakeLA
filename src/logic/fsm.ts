@@ -5,10 +5,6 @@ export const determineState = (gameState: GameState): StateType => {
   const { you, board } = gameState;
   const aliveEnemies = board.snakes.filter(s => s.id !== you.id);
   
-  if (aliveEnemies.length === 1) {
-    return 'DUEL_1V1';
-  }
-
   const avgEnemyLength = aliveEnemies.length > 0 
     ? aliveEnemies.reduce((acc, curr) => acc + curr.length, 0) / aliveEnemies.length 
     : 0;
@@ -17,13 +13,24 @@ export const determineState = (gameState: GameState): StateType => {
     ? Math.max(...aliveEnemies.map(s => s.length)) 
     : 0;
 
+  // Starvation/Emergency state overrides personality
   if (you.health < config.HEALTH_CRITICAL_THRESHOLD || (you.health < 60 && you.length <= avgEnemyLength)) {
-    return 'SEARCH_FOOD';
+    return 'SEARCH_FOOD_URGENT';
   }
 
-  if (you.length > maxEnemyLength && you.health > config.HEALTH_SAFE_THRESHOLD) {
-    return 'AGGRESSIVE';
+  // Dominating state (we are the biggest and healthy)
+  if (aliveEnemies.length > 0 && you.length > maxEnemyLength && you.health > config.HEALTH_SAFE_THRESHOLD) {
+    return 'DOMINATING';
   }
 
-  return 'DEFENSIVE';
+  // Base personalities based on active player count
+  if (aliveEnemies.length === 0) {
+    return 'LONE_SNAKE'; // 1 player left
+  } else if (aliveEnemies.length === 1) {
+    return 'DUEL_1V1';   // 2 players
+  } else if (aliveEnemies.length === 2) {
+    return 'TACTICAL_3P'; // 3 players
+  } else {
+    return 'SURVIVAL_4P'; // 4 or more players
+  }
 };

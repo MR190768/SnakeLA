@@ -39,7 +39,7 @@ export interface GameState {
 export interface MoveResponse { move: 'up' | 'down' | 'left' | 'right'; shout?: string; }
 export interface InfoResponse { apiversion: string; author?: string; color?: string; head?: string; tail?: string; version?: string; }
 
-export type StateType = 'SEARCH_FOOD' | 'DEFENSIVE' | 'AGGRESSIVE' | 'DUEL_1V1';
+export type StateType = 'SEARCH_FOOD_URGENT' | 'DOMINATING' | 'LONE_SNAKE' | 'DUEL_1V1' | 'TACTICAL_3P' | 'SURVIVAL_4P';
 
 export interface TurnMetric {
   turn: number;

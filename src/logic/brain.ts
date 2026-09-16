@@ -1,7 +1,7 @@
 import { GameState, MoveResponse, Coord, TurnMetric } from '../types/battlesnake';
 import { isOutOfBounds, isBodyCollision } from './collision';
 import { calculateFreeSpace } from './floodFill';
-import { findNearestFoodDistance } from './pathfinding';
+import { getFeasibleFoodScore } from './pathfinding';
 import { determineState } from './fsm';
 import { config } from '../config/weights';
 
@@ -49,13 +49,32 @@ export const move = (gameState: GameState): MoveResponse => {
     // Feature: Free space
     score += freeSpace * config.WEIGHT_FREE_SPACE;
     
-    // Feature: Center control & Edge Avoidance (Evitar morir TRAPPED)
+    let dynamicCenterControl = config.WEIGHT_CENTER_CONTROL;
+    let dynamicEdgeAvoidance = config.WEIGHT_EDGE_AVOIDANCE;
+    let dynamicHeadAttack = config.WEIGHT_HEAD_ATTACK;
+
+    // Personality changes depending on number of active players (state)
+    if (state === 'SURVIVAL_4P') {
+      dynamicCenterControl = -2.0; // Avoid center, too chaotic
+      dynamicEdgeAvoidance = 2.0;  // Hugging walls is safer
+    } else if (state === 'TACTICAL_3P') {
+      dynamicCenterControl = 0.5;
+      dynamicEdgeAvoidance = 8.0;
+    } else if (state === 'DOMINATING') {
+      dynamicCenterControl = 3.0; // Control center
+      dynamicHeadAttack = 15.0;   // Highly aggressive
+    } else if (state === 'LONE_SNAKE') {
+      dynamicCenterControl = 0;   // Just fill space efficiently
+      dynamicEdgeAvoidance = 5.0;
+    }
+
+    // Feature: Center control & Edge Avoidance
     const centerDist = Math.abs(targetCoord.x - width / 2) + Math.abs(targetCoord.y - height / 2);
-    score -= centerDist * config.WEIGHT_CENTER_CONTROL;
+    score -= centerDist * dynamicCenterControl;
     
     const isEdge = targetCoord.x === 0 || targetCoord.x === width - 1 || targetCoord.y === 0 || targetCoord.y === height - 1;
-    if (isEdge && state !== 'SEARCH_FOOD') {
-      score -= config.WEIGHT_EDGE_AVOIDANCE;
+    if (isEdge && state !== 'SEARCH_FOOD_URGENT') {
+      score -= dynamicEdgeAvoidance;
     }
 
     // Feature: Tail Chasing (Movimiento 100% seguro)
@@ -65,12 +84,15 @@ export const move = (gameState: GameState): MoveResponse => {
       score += config.WEIGHT_TAIL_CHASE; 
     }
     
-    // Feature: Food
-    if (state === 'SEARCH_FOOD' || state === 'DUEL_1V1') {
-       const foodDist = findNearestFoodDistance(targetCoord, gameState);
-       if (foodDist !== Infinity) {
-         score -= foodDist * config.WEIGHT_FOOD_DISTANCE;
-       }
+    // Feature: Smart Food Collection (Feasible & Proximity)
+    const feasibleFoodScore = getFeasibleFoodScore(targetCoord, gameState);
+    
+    if (state === 'SEARCH_FOOD_URGENT') {
+       score += feasibleFoodScore * 2.0; // Desperate, prioritize food over everything
+    } else if (state === 'SURVIVAL_4P') {
+       if (feasibleFoodScore > 50) score += feasibleFoodScore; // Only take very safe/close food
+    } else {
+       score += feasibleFoodScore; // Natural opportunistic collection
     }
 
     // Feature: Heads
@@ -80,8 +102,8 @@ export const move = (gameState: GameState): MoveResponse => {
       if (distToHead === 1) { // Adjacent
         if (snake.length >= gameState.you.length) {
           score += config.WEIGHT_HEAD_AVOIDANCE; // Heavy penalty
-        } else if (state === 'AGGRESSIVE') {
-          score += config.WEIGHT_HEAD_ATTACK; // Reward
+        } else if (state === 'DOMINATING' || state === 'DUEL_1V1') {
+          score += dynamicHeadAttack; // Reward for eating smaller snakes
         }
       }
     }

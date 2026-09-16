@@ -34,3 +34,50 @@ export const findNearestFoodDistance = (startCoord: Coord, gameState: GameState)
   }
   return Infinity;
 };
+
+export const getFeasibleFoodScore = (startCoord: Coord, gameState: GameState): number => {
+  const { board, you } = gameState;
+  if (board.food.length === 0) return 0;
+  
+  let bestScore = 0;
+
+  for (const food of board.food) {
+    // Manhattan distance is faster for multiple heuristics
+    const myDist = Math.abs(startCoord.x - food.x) + Math.abs(startCoord.y - food.y);
+    
+    if (myDist > 20) continue;
+
+    let isFeasible = true;
+    let minEnemyDist = Infinity;
+
+    for (const snake of board.snakes) {
+      if (snake.id === you.id) continue;
+      
+      const enemyDist = Math.abs(snake.head.x - food.x) + Math.abs(snake.head.y - food.y);
+      if (enemyDist < minEnemyDist) {
+        minEnemyDist = enemyDist;
+      }
+
+      // If an enemy can reach it before or at the same time, and is bigger/equal, it's a trap
+      if (enemyDist <= myDist && snake.length >= you.length) {
+        isFeasible = false;
+        break;
+      }
+    }
+
+    if (isFeasible) {
+      // Score based on proximity. Close food gives a large bonus.
+      let score = 100 / (myDist + 1);
+      if (myDist <= 3) {
+        score += 200; // Massive bonus for nearby feasible food
+      }
+      if (score > bestScore) bestScore = score;
+    } else {
+      // Small consideration for unfeasible food just in case
+      let fallbackScore = 5 / (myDist + 1);
+      if (fallbackScore > bestScore) bestScore = fallbackScore;
+    }
+  }
+
+  return bestScore;
+};
