@@ -64,7 +64,7 @@ export default async function (fastify: FastifyInstance, options: FastifyPluginO
         JSON.stringify(gameData) + '\n'
       );
     } catch (err) {
-      request.log.error('Failed to write telemetry data', err);
+      request.log.error(err as Error, 'Failed to write telemetry data');
     }
 
     delete activeGames[game.id];
