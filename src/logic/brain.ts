@@ -1,102 +1,108 @@
-import { GameState, MoveResponse, Coord } from '../types';
-import { isOutOfBounds, isCollision, getHeadToHeadThreats } from './rules';
+import { GameState, MoveResponse, Coord, TurnMetric } from '../types/battlesnake';
+import { isOutOfBounds, isBodyCollision } from './collision';
 import { calculateFreeSpace } from './floodFill';
 import { findNearestFoodDistance } from './pathfinding';
+import { determineState } from './fsm';
+import { config } from '../config/weights';
+
+export const activeGames: Record<string, TurnMetric[]> = {};
 
 export const move = (gameState: GameState): MoveResponse => {
   const startTime = Date.now();
-  const TIME_LIMIT_MS = 350;
+  const TIME_LIMIT_MS = 320;
   
-  const possibleMoves: { [key: string]: boolean } = {
-    up: true, down: true, left: true, right: true
-  };
-  
+  const state = determineState(gameState);
   const myHead = gameState.you.head;
-  const boardWidth = gameState.board.width;
-  const boardHeight = gameState.board.height;
+  const { width, height, snakes } = gameState.board;
   
-  const moveCoords: { [key: string]: Coord } = {
+  const moveCoords: Record<string, Coord> = {
     up: { x: myHead.x, y: myHead.y + 1 },
     down: { x: myHead.x, y: myHead.y - 1 },
     left: { x: myHead.x - 1, y: myHead.y },
     right: { x: myHead.x + 1, y: myHead.y }
   };
   
-  for (const move of Object.keys(possibleMoves)) {
-    const targetCoord = moveCoords[move];
-    if (isOutOfBounds(targetCoord, boardWidth, boardHeight)) {
-      possibleMoves[move] = false;
-      continue;
-    }
-    if (isCollision(targetCoord, gameState.board.snakes)) {
-      possibleMoves[move] = false;
-      continue;
-    }
-  }
-
-  let maxSpace = -1;
+  const scores: Record<string, number> = { up: 0, down: 0, left: 0, right: 0 };
   let bestMoves: string[] = [];
-  const safeMoves = Object.keys(possibleMoves).filter(m => possibleMoves[m]);
+  let maxScore = -Infinity;
+  let moveSpace: Record<string, number> = { up: 0, down: 0, left: 0, right: 0 };
   
-  for (const move of safeMoves) {
-    if (Date.now() - startTime > TIME_LIMIT_MS - 50) break; // Guard timeout
-
-    const targetCoord = moveCoords[move];
-    const isThreatened = getHeadToHeadThreats(targetCoord, gameState.board.snakes, gameState.you);
+  for (const dir of Object.keys(moveCoords)) {
+    const targetCoord = moveCoords[dir];
     
-    let space = 0;
-    if (!isThreatened) {
-       space = calculateFreeSpace(targetCoord, gameState, gameState.you.length * 2);
-    } else {
-       space = -1; // Heavy penalty for moving into larger snake's head radius
+    // Hard constraints
+    if (isOutOfBounds(targetCoord, width, height) || isBodyCollision(targetCoord, snakes)) {
+      scores[dir] = -Infinity;
+      continue;
     }
-    
-    if (space > maxSpace) {
-      maxSpace = space;
-      bestMoves = [move];
-    } else if (space === maxSpace) {
-      bestMoves.push(move);
-    }
-  }
-  
-  if (bestMoves.length === 0) {
-    const aliveMoves = Object.keys(possibleMoves).filter(m => possibleMoves[m]);
-    if (aliveMoves.length > 0) bestMoves = aliveMoves;
-    else return { move: 'up', shout: 'Farewell!' };
-  }
-  
-  if (Date.now() - startTime > TIME_LIMIT_MS - 30) {
-    return { move: bestMoves[0] as MoveResponse['move'] };
-  }
 
-  let finalMove = bestMoves[0];
-  
-  // Health / Food priority
-  if (gameState.you.health < 35 && bestMoves.length > 1) {
-    let minFoodDistance = Infinity;
-    for (const move of bestMoves) {
-      const dist = findNearestFoodDistance(moveCoords[move], gameState);
-      if (dist < minFoodDistance) {
-        minFoodDistance = dist;
-        finalMove = move;
+    const freeSpace = calculateFreeSpace(targetCoord, gameState, gameState.you.length * 2);
+    moveSpace[dir] = freeSpace;
+
+    if (freeSpace < gameState.you.length && freeSpace < gameState.you.length * 2) {
+      // Extremely bad unless forced
+      scores[dir] -= 10000;
+    }
+
+    let score = 0;
+    
+    // Feature: Free space
+    score += freeSpace * config.WEIGHT_FREE_SPACE;
+    
+    // Feature: Center control
+    const centerDist = Math.abs(targetCoord.x - width / 2) + Math.abs(targetCoord.y - height / 2);
+    score -= centerDist * config.WEIGHT_CENTER_CONTROL;
+    
+    // Feature: Food
+    if (state === 'SEARCH_FOOD' || state === 'DUEL_1V1') {
+       const foodDist = findNearestFoodDistance(targetCoord, gameState);
+       if (foodDist !== Infinity) {
+         score -= foodDist * config.WEIGHT_FOOD_DISTANCE;
+       }
+    }
+
+    // Feature: Heads
+    for (const snake of snakes) {
+      if (snake.id === gameState.you.id) continue;
+      const distToHead = Math.abs(targetCoord.x - snake.head.x) + Math.abs(targetCoord.y - snake.head.y);
+      if (distToHead === 1) { // Adjacent
+        if (snake.length >= gameState.you.length) {
+          score += config.WEIGHT_HEAD_AVOIDANCE; // Heavy penalty
+        } else if (state === 'AGGRESSIVE') {
+          score += config.WEIGHT_HEAD_ATTACK; // Reward
+        }
       }
     }
-  } else if (bestMoves.length > 1) {
-    // Board control (Central positioning)
-    const center = { x: boardWidth / 2, y: boardHeight / 2 };
-    let minCenterDist = Infinity;
-    for (const move of bestMoves) {
-      const coord = moveCoords[move];
-      const dist = Math.abs(coord.x - center.x) + Math.abs(coord.y - center.y);
-      if (dist < minCenterDist) {
-        minCenterDist = dist;
-        finalMove = move;
-      }
+
+    scores[dir] += score;
+    
+    if (scores[dir] > maxScore) {
+      maxScore = scores[dir];
+      bestMoves = [dir];
+    } else if (scores[dir] === maxScore && scores[dir] !== -Infinity) {
+      bestMoves.push(dir);
+    }
+    
+    // Timeout guard
+    if (Date.now() - startTime > TIME_LIMIT_MS - 30) {
+      break;
     }
   }
   
-  return { 
-    move: finalMove as MoveResponse['move'], 
-    shout: `Lat: ${Date.now() - startTime}ms` 
-  };
+  const chosenMove = bestMoves.length > 0 ? bestMoves[0] : 'up';
+  
+  // Save telemetry
+  if (!activeGames[gameState.game.id]) activeGames[gameState.game.id] = [];
+  activeGames[gameState.game.id].push({
+    turn: gameState.turn,
+    health: gameState.you.health,
+    length: gameState.you.length,
+    state,
+    chosenMove,
+    scores,
+    computeMs: Date.now() - startTime,
+    freeSpace: moveSpace[chosenMove]
+  });
+  
+  return { move: chosenMove as MoveResponse['move'], shout: `State: ${state}` };
 };
