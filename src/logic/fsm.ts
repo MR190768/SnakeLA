@@ -13,8 +13,10 @@ export const determineState = (gameState: GameState): StateType => {
     ? Math.max(...aliveEnemies.map(s => s.length)) 
     : 0;
 
-  // Starvation/Emergency state overrides personality
-  if (you.health < config.HEALTH_CRITICAL_THRESHOLD || (you.health < 60 && you.length <= avgEnemyLength)) {
+  // Starvation/Emergency state or early vulnerable growth requirement
+  if (you.health < config.HEALTH_CRITICAL_THRESHOLD || 
+      (you.health < 70 && you.length <= avgEnemyLength) ||
+      (you.length <= 4 && you.health < 80)) {
     return 'SEARCH_FOOD_URGENT';
   }
 

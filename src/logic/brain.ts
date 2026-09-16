@@ -2,6 +2,7 @@ import { GameState, MoveResponse, Coord, TurnMetric } from '../types/battlesnake
 import { isOutOfBounds, isBodyCollision } from './collision';
 import { calculateFreeSpace } from './floodFill';
 import { getFeasibleFoodScore } from './pathfinding';
+import { evaluateMovesVoronoi } from './minimax';
 import { determineState } from './fsm';
 import { config } from '../config/weights';
 
@@ -27,6 +28,8 @@ export const move = (gameState: GameState): MoveResponse => {
   let maxScore = -Infinity;
   let moveSpace: Record<string, number> = { up: 0, down: 0, left: 0, right: 0 };
   
+  const voronoiScores = evaluateMovesVoronoi(gameState);
+  
   for (const dir of Object.keys(moveCoords)) {
     const targetCoord = moveCoords[dir];
     
@@ -46,26 +49,38 @@ export const move = (gameState: GameState): MoveResponse => {
 
     let score = 0;
     
-    // Feature: Free space
+    // Feature: Free space (Absolute Survival)
     score += freeSpace * config.WEIGHT_FREE_SPACE;
     
+    // Feature: Voronoi Control (Relative Area Control)
+    const vScore = voronoiScores[dir] !== -Infinity ? voronoiScores[dir] : 0;
+    
+    // Voronoi gets heavy weighting as it predicts territory
+    // If we have very little Voronoi space compared to our length, it's a huge penalty
+    if (vScore < gameState.you.length && snakes.length > 1) {
+       score -= 5000;
+    } else {
+       score += vScore * 10.0; // Dynamic config could be used here
+    }
+
     let dynamicCenterControl = config.WEIGHT_CENTER_CONTROL;
     let dynamicEdgeAvoidance = config.WEIGHT_EDGE_AVOIDANCE;
     let dynamicHeadAttack = config.WEIGHT_HEAD_ATTACK;
 
     // Personality changes depending on number of active players (state)
     if (state === 'SURVIVAL_4P') {
-      dynamicCenterControl = -2.0; // Avoid center, too chaotic
-      dynamicEdgeAvoidance = 2.0;  // Hugging walls is safer
+      dynamicCenterControl = 0.5;  // Stay mobile, never get cornered against walls
+      dynamicEdgeAvoidance = 12.0; // Walls are deathtraps in 4P
     } else if (state === 'TACTICAL_3P') {
-      dynamicCenterControl = 0.5;
-      dynamicEdgeAvoidance = 8.0;
+      dynamicCenterControl = 1.0;
+      dynamicEdgeAvoidance = 14.0;
     } else if (state === 'DOMINATING') {
-      dynamicCenterControl = 3.0; // Control center
-      dynamicHeadAttack = 15.0;   // Highly aggressive
+      dynamicCenterControl = 2.5;  // Dominate the center
+      dynamicHeadAttack = 150.0;   // Aggressively hunt smaller snakes
+      dynamicEdgeAvoidance = 15.0;
     } else if (state === 'LONE_SNAKE') {
-      dynamicCenterControl = 0;   // Just fill space efficiently
-      dynamicEdgeAvoidance = 5.0;
+      dynamicCenterControl = 0;
+      dynamicEdgeAvoidance = 10.0;
     }
 
     // Feature: Center control & Edge Avoidance
@@ -77,35 +92,39 @@ export const move = (gameState: GameState): MoveResponse => {
       score -= dynamicEdgeAvoidance;
     }
 
-    // Feature: Tail Chasing (Movimiento 100% seguro)
+    // Feature: Tail Chasing (Safe recycling of space)
     const myTail = gameState.you.body[gameState.you.body.length - 1];
     const distToTail = Math.abs(targetCoord.x - myTail.x) + Math.abs(targetCoord.y - myTail.y);
     if (distToTail === 1 && gameState.you.health < 100) {
       score += config.WEIGHT_TAIL_CHASE; 
     }
     
-    // Feature: Smart Food Collection (Feasible & Proximity)
+    // Feature: Smart Food Collection
     const feasibleFoodScore = getFeasibleFoodScore(targetCoord, gameState);
-    
-    if (state === 'SEARCH_FOOD_URGENT') {
-       score += feasibleFoodScore * 2.0; // Desperate, prioritize food over everything
-    } else if (state === 'SURVIVAL_4P') {
-       if (feasibleFoodScore > 50) score += feasibleFoodScore; // Only take very safe/close food
-    } else {
-       score += feasibleFoodScore; // Natural opportunistic collection
-    }
+    score += feasibleFoodScore * (state === 'SEARCH_FOOD_URGENT' ? 2.5 : 1.5);
 
-    // Feature: Heads
+    // Feature: Heads (Sharp Combat & Survival)
+    let canAttack = false;
+    let headHazard = false;
+
     for (const snake of snakes) {
       if (snake.id === gameState.you.id) continue;
       const distToHead = Math.abs(targetCoord.x - snake.head.x) + Math.abs(targetCoord.y - snake.head.y);
-      if (distToHead === 1) { // Adjacent
+
+      if (distToHead === 1) {
+        // Immediate contestable square
         if (snake.length >= gameState.you.length) {
-          score += config.WEIGHT_HEAD_AVOIDANCE; // Heavy penalty
-        } else if (state === 'DOMINATING' || state === 'DUEL_1V1') {
-          score += dynamicHeadAttack; // Reward for eating smaller snakes
+          headHazard = true;
+          score += config.WEIGHT_HEAD_AVOIDANCE; // -15000 fatal collision risk
+        } else {
+          canAttack = true;
         }
       }
+    }
+
+    // Only attack smaller head if no bigger snake threatens that square
+    if (canAttack && !headHazard) {
+      score += dynamicHeadAttack;
     }
 
     scores[dir] += score;
@@ -123,7 +142,18 @@ export const move = (gameState: GameState): MoveResponse => {
     }
   }
   
-  const chosenMove = bestMoves.length > 0 ? bestMoves[0] : 'up';
+  // Tie-breaking: choose the move with maximum free space and Voronoi territory
+  let chosenMove = bestMoves.length > 0 ? bestMoves[0] : 'up';
+  if (bestMoves.length > 1) {
+    let maxSpace = -Infinity;
+    for (const m of bestMoves) {
+      const combinedSpace = (moveSpace[m] || 0) + (voronoiScores[m] !== -Infinity ? voronoiScores[m] : 0);
+      if (combinedSpace > maxSpace) {
+        maxSpace = combinedSpace;
+        chosenMove = m;
+      }
+    }
+  }
   
   // Save telemetry
   if (!activeGames[gameState.game.id]) activeGames[gameState.game.id] = [];

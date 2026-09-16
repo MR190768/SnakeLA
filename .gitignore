@@ -24,3 +24,12 @@ Thumbs.db
 # Testing & Coverage
 coverage/
 .nyc_output/
+
+# Binaries and archives
+*.exe
+*.tar.gz
+*.zip
+
+# Local logs and simulation data
+data/telemetry_logs.jsonl
+*.log

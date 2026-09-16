@@ -48,35 +48,38 @@ export const getFeasibleFoodScore = (startCoord: Coord, gameState: GameState): n
     if (myDist > 20) continue;
 
     let isFeasible = true;
-    let minEnemyDist = Infinity;
+    let isDangerousTrap = false;
 
     for (const snake of board.snakes) {
       if (snake.id === you.id) continue;
       
       const enemyDist = Math.abs(snake.head.x - food.x) + Math.abs(snake.head.y - food.y);
-      if (enemyDist < minEnemyDist) {
-        minEnemyDist = enemyDist;
-      }
 
-      // If an enemy can reach it before or at the same time, and is bigger/equal, it's a trap
-      if (enemyDist <= myDist && snake.length >= you.length) {
+      // A food is an immediate lethal trap only if a bigger/equal enemy is closer and adjacent
+      if (enemyDist < myDist && snake.length >= you.length) {
         isFeasible = false;
-        break;
+        if (enemyDist <= 1) {
+          isDangerousTrap = true;
+        }
       }
     }
 
-    if (isFeasible) {
-      // Score based on proximity. Close food gives a large bonus.
-      let score = 100 / (myDist + 1);
-      if (myDist <= 3) {
-        score += 200; // Massive bonus for nearby feasible food
-      }
-      if (score > bestScore) bestScore = score;
-    } else {
-      // Small consideration for unfeasible food just in case
-      let fallbackScore = 5 / (myDist + 1);
-      if (fallbackScore > bestScore) bestScore = fallbackScore;
+    // Distance gradient: closer food is always attractive
+    let score = Math.max(0, (15 - myDist) * 14);
+
+    if (myDist <= 2) {
+      score += 150; // High bonus for immediate food
     }
+
+    if (isDangerousTrap && you.health > 30) {
+      // Avoid immediate trap if we still have health to look elsewhere
+      score = 0;
+    } else if (!isFeasible) {
+      // Enemy is slightly closer, but if we are low on health, still pursue!
+      score = you.health < 45 ? score * 0.7 : score * 0.25;
+    }
+
+    if (score > bestScore) bestScore = score;
   }
 
   return bestScore;
