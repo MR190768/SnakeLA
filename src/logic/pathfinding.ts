@@ -67,8 +67,10 @@ export const getFeasibleFoodScore = (startCoord: Coord, gameState: GameState): n
     // Distance gradient: closer food is always attractive
     let score = Math.max(0, (15 - myDist) * 14);
 
-    if (myDist <= 2) {
-      score += 150; // High bonus for immediate food
+    if (myDist === 0) {
+      score += 1000; // High bonus for immediate consumption (eating the food right now)
+    } else if (myDist <= 2) {
+      score += 150; // High bonus for nearby food
     }
 
     if (isDangerousTrap && you.health > 30) {

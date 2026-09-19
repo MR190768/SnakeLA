@@ -8,20 +8,28 @@ import { isOutOfBounds, isBodyCollision } from './collision';
  * This is a simplified simulation for Voronoi calculation.
  */
 const simulateMyMove = (gameState: GameState, targetCoord: Coord): GameState => {
-  const nextState = JSON.parse(JSON.stringify(gameState)) as GameState;
-  
-  // Move 'you'
-  nextState.you.head = targetCoord;
-  nextState.you.body.unshift(targetCoord);
-  nextState.you.body.pop(); // Assume no food eaten for simplicity of space control
+  // Shallow clone board and snakes to avoid expensive JSON serialization
+  const nextSnakes = gameState.board.snakes.map(s => {
+    if (s.id === gameState.you.id) {
+      return {
+        ...s,
+        head: targetCoord,
+        body: [targetCoord, ...s.body.slice(0, s.body.length - 1)]
+      };
+    }
+    return s; // Other snakes are just referenced
+  });
 
-  // Update in board
-  const myIndex = nextState.board.snakes.findIndex(s => s.id === nextState.you.id);
-  if (myIndex !== -1) {
-    nextState.board.snakes[myIndex] = nextState.you;
-  }
+  const nextYou = nextSnakes.find(s => s.id === gameState.you.id)!;
 
-  return nextState;
+  return {
+    ...gameState,
+    you: nextYou,
+    board: {
+      ...gameState.board,
+      snakes: nextSnakes
+    }
+  };
 };
 
 /**

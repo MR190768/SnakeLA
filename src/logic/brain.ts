@@ -101,7 +101,7 @@ export const move = (gameState: GameState): MoveResponse => {
     
     // Feature: Smart Food Collection
     const feasibleFoodScore = getFeasibleFoodScore(targetCoord, gameState);
-    score += feasibleFoodScore * (state === 'SEARCH_FOOD_URGENT' ? 2.5 : 1.5);
+    score += feasibleFoodScore * (state === 'SEARCH_FOOD_URGENT' ? 3.5 : 2.0);
 
     // Feature: Heads (Sharp Combat & Survival)
     let canAttack = false;

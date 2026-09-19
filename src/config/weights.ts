@@ -1,6 +1,7 @@
 export const config = {
   WEIGHT_FREE_SPACE: parseFloat(process.env.WEIGHT_FREE_SPACE || '10.0'),
   WEIGHT_FOOD_DISTANCE: parseFloat(process.env.WEIGHT_FOOD_DISTANCE || '5.0'),
+  WEIGHT_FOOD_INCIDENTAL: parseFloat(process.env.WEIGHT_FOOD_INCIDENTAL || '1.5'),
   WEIGHT_HEAD_ATTACK: parseFloat(process.env.WEIGHT_HEAD_ATTACK || '50.0'),
   WEIGHT_HEAD_AVOIDANCE: parseFloat(process.env.WEIGHT_HEAD_AVOIDANCE || '-15000.0'),
   WEIGHT_TAIL_CHASE: parseFloat(process.env.WEIGHT_TAIL_CHASE || '25.0'),

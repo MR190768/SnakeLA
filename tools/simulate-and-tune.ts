@@ -31,6 +31,7 @@ console.log("\n--- Starting Calibration ---");
 const newWeights = {
   WEIGHT_FREE_SPACE: 12.0,
   WEIGHT_FOOD_DISTANCE: 6.0,
+  WEIGHT_FOOD_INCIDENTAL: 1.5,
   WEIGHT_HEAD_AVOIDANCE: -15000.0,
   WEIGHT_HEAD_ATTACK: 150.0,
   WEIGHT_EDGE_AVOIDANCE: 12.0,
@@ -42,6 +43,12 @@ if (reasons['TRAPPED'] > (losses.length * 0.2)) {
   newWeights.WEIGHT_FREE_SPACE = 20.0;
   newWeights.WEIGHT_EDGE_AVOIDANCE = 25.0;
   newWeights.WEIGHT_TAIL_CHASE = 35.0;
+}
+
+if ((reasons['STARVATION'] || 0) > (losses.length * 0.15)) {
+  console.log("High starvation rate detected. Boosting food priority weights.");
+  newWeights.WEIGHT_FOOD_DISTANCE = 9.0;
+  newWeights.WEIGHT_FOOD_INCIDENTAL = 3.0;
 }
 
 if ((reasons['HEAD_TO_HEAD_LOST'] || 0) > (losses.length * 0.2)) {
